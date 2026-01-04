@@ -17,16 +17,18 @@ export interface BubbleData {
   role: string;
 }
 
-// Funkcja pomocnicza: Tasowanie
-const shuffleArray = <T>(array: T[]): T[] => {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-};
+const PHI = 1.618;
 
-// Standardowa kolizja dla starych trybów
+// SKALE WG ZŁOTEGO PODZIAŁU
+const S_MICRO   = 0.5;
+const S_ACCENT  = S_MICRO * PHI;    // ~0.81
+const S_SUPPORT = S_ACCENT * PHI;   // ~1.31
+const S_ANCHOR  = S_SUPPORT * PHI;  // ~2.12
+
+// AMPLITUDA PIONOWA (Baza do rozwarstwienia Y)
+const Y_BASE_SPREAD = 0.25; 
+
+// Funkcja kolizji 3D (Legacy)
 const checkCollisionOld = (
   candidatePos: THREE.Vector3, 
   radius: number, 
@@ -40,18 +42,20 @@ const checkCollisionOld = (
   return false;
 };
 
-// NOWA KOLIZJA: Wymusza odstęp (graphic-first)
+// Funkcja separacji 2D (Graphic First)
 const checkSeparation = (
   candidatePos: THREE.Vector3, 
   radius: number, 
   existingBubbles: { position: [number, number, number], scale: number }[],
-  minFactor: number = 1.1 // Domyślnie 110% sumy promieni (NIC SIĘ NIE DOTYKA)
+  minFactor: number = 1.1 
 ) => {
   for (let b of existingBubbles) {
-    const dist = candidatePos.distanceTo(new THREE.Vector3(...b.position));
-    // Dystans musi być WIĘKSZY niż suma promieni * factor
+    const dx = candidatePos.x - b.position[0];
+    const dy = candidatePos.y - b.position[1];
+    const dist2D = Math.sqrt(dx*dx + dy*dy); 
+
     const requiredDist = (radius + b.scale / 2) * minFactor;
-    if (dist < requiredDist) return true; // Za blisko!
+    if (dist2D < requiredDist) return true; 
   }
   return false;
 };
@@ -66,109 +70,141 @@ export const generateLayout = (
   const bubbles: BubbleData[] = [];
 
   // =========================================================
-  // TRYB: STUDIO_SCENOGRAPHY (Graphic-First)
+  // TRYB: STUDIO_SCENOGRAPHY
   // =========================================================
   if (composition === 'STUDIO_SCENOGRAPHY') {
     
-    // 1. STRUKTURA RÓL (Sztywna i czysta)
     const definitions = [
-      { role: 'ANCHOR',  scale: 2.8 }, // Hero
-      { role: 'SUPPORT', scale: 1.6 }, // Duże wsparcie
-      { role: 'SUPPORT', scale: 1.5 },
-      { role: 'ACCENT',  scale: 0.9 }, // Rytm
-      { role: 'ACCENT',  scale: 0.8 },
-      { role: 'ACCENT',  scale: 0.7 },
-      { role: 'ACCENT',  scale: 0.6 },
+      { role: 'ANCHOR',  scale: S_ANCHOR },  
+      
+      { role: 'SUPPORT', scale: S_SUPPORT }, 
+      { role: 'SUPPORT', scale: S_SUPPORT },
+
+      { role: 'ACCENT',  scale: S_ACCENT },  
+      { role: 'ACCENT',  scale: S_ACCENT },
+      { role: 'ACCENT',  scale: S_ACCENT },
+
+      { role: 'MICRO',   scale: S_MICRO },   
+      { role: 'MICRO',   scale: S_MICRO },
+      { role: 'MICRO',   scale: S_MICRO },
+      { role: 'MICRO',   scale: S_MICRO },
+      { role: 'MICRO',   scale: S_MICRO },
     ];
 
-    // Anchor position reference
+    const anchorSide = Math.random() > 0.5 ? 1 : -1; 
     let anchorX = 0;
 
     definitions.forEach((def, i) => {
-      // 2. KOLOR = HIERARCHIA
+      // 1. POBIERAMY PALETĘ
       const rawPalette = globalTheme[Math.floor(Math.random() * globalTheme.length)];
+      
+      // 2. PRZYPISANIE KOLORU WG MASY
       let finalPalette = { ...rawPalette };
 
       if (def.role === 'ANCHOR' || def.role === 'SUPPORT') {
-        // Główne bryły w kolorze marki (mid)
-        // Trick: ustawiamy mid jako dominujący, reszta neutralna
+        finalPalette.mid = rawPalette.base; 
+        finalPalette.base = rawPalette.base;
+        finalPalette.rim = rawPalette.mid;   
+      } else {
+        finalPalette.mid = rawPalette.mid;
+        finalPalette.base = rawPalette.base; 
+        finalPalette.rim = '#FFFFFF';        
+      }
+      
+      // Alternatywne logiczne przypisanie dla spójności
+      if (def.role === 'ANCHOR' || def.role === 'SUPPORT') {
         finalPalette.base = rawPalette.mid; 
       } else {
-        // Accents: Zmieniamy jasność (używając rim/base z palety jako proxy)
         const variant = Math.random();
-        if (variant > 0.5) finalPalette.mid = rawPalette.rim; // Jaśniejszy
-        else finalPalette.mid = rawPalette.base; // Ciemniejszy
+        if (variant > 0.6) finalPalette.mid = rawPalette.rim; 
+        else finalPalette.mid = rawPalette.base; 
       }
 
-      // 3. OŚ I POZYCJONOWANIE
       let bestPos = new THREE.Vector3(0, -100, 0);
       let found = false;
-      const attempts = 300;
+      const attempts = 500; 
 
       for (let attempt = 0; attempt < attempts; attempt++) {
         const candidate = new THREE.Vector3();
 
-        // OŚ X (Rozkład)
+        // --- X AXIS (Golden Balance) ---
         if (def.role === 'ANCHOR') {
-           // Anchor blisko środka, ale z offsetem (asymetria)
-           const offsetX = (Math.random() - 0.5) * 2.0; 
-           candidate.x = offsetX;
-           anchorX = offsetX; // Zapisz dla innych
+           const offset = 1.5 + Math.random() * 0.5;
+           candidate.x = anchorSide * offset; 
+           anchorX = candidate.x; 
         } else if (def.role === 'SUPPORT') {
-           // Supporty szeroko, balansują Anchora
-           const side = Math.random() > 0.5 ? 1 : -1;
-           // Odsuwamy od Anchora na 2.5 - 5.0 jednostek
-           candidate.x = anchorX + (side * (2.5 + Math.random() * 2.5));
+           const isCounterWeight = Math.random() > 0.3; 
+           if (isCounterWeight) {
+             candidate.x = -anchorSide * (2.0 + Math.random() * 2.5);
+           } else {
+             candidate.x = anchorX + (anchorSide * (1.5 + Math.random()));
+           }
         } else {
-           // Accents wypełniają luki (Rytm)
-           // Losujemy w całym pasie roboczym (-6 do 6)
-           candidate.x = (Math.random() - 0.5) * 12.0;
+           candidate.x = (Math.random() - 0.5) * 10.0;
         }
 
-        // OŚ Y (Wąski pas horyzontalny - ZASADA 1)
-        // Zakres: -1.2 do 0.4
-        // Większe obiekty niżej, mniejsze mogą być wyżej (ale bez przesady)
-        const yBase = -0.8; 
-        const yVar = (Math.random() - 0.5) * 1.0; 
-        candidate.y = yBase + yVar;
-        // Hard clamp - wymuszenie pasa
-        if (candidate.y < -1.2) candidate.y = -1.2;
-        if (candidate.y > 0.4) candidate.y = 0.4;
+        // --- Y AXIS (GOLDEN AMPLITUDE) ---
+        const yCenter = -0.5;
+        let yAmplitude = 0;
 
-        // OŚ Z (Płytka głębia - ZASADA 6)
-        // Kartonowe plany, separacja
-        candidate.z = (Math.random() - 0.5) * 1.5;
+        switch (def.role) {
+            case 'ANCHOR':  yAmplitude = Y_BASE_SPREAD; break;
+            case 'SUPPORT': yAmplitude = Y_BASE_SPREAD * PHI; break;
+            case 'ACCENT':  yAmplitude = Y_BASE_SPREAD * PHI * PHI; break;
+            case 'MICRO':   yAmplitude = Y_BASE_SPREAD * PHI * PHI * PHI; break;
+            default:        yAmplitude = 0.5;
+        }
 
-        // 4. SEPARACJA (ZASADA 2 - NIC SIĘ NIE DOTYKA)
-        // Losujemy wymagany dystans dla tej próby (Near vs Mid)
-        // Near (1.1 - 1.4), Mid (1.5 - 2.2)
-        const separationFactor = 1.1 + Math.random() * 0.4; 
+        candidate.y = yCenter + (Math.random() - 0.5) * (yAmplitude * 2);
         
-        if (!checkSeparation(candidate, def.scale / 2, bubbles, separationFactor)) {
+        // Clamp
+        if (def.role === 'ANCHOR' || def.role === 'SUPPORT') {
+             if (candidate.y < -1.0) candidate.y = -1.0;
+             if (candidate.y > 0.0) candidate.y = 0.0;
+        } else {
+             if (candidate.y < -1.5) candidate.y = -1.5;
+             if (candidate.y > 0.5) candidate.y = 0.5;
+        }
+
+        // --- Z AXIS (Depth Stacking) ---
+        let zBase = 0;
+        let zVar = 0.5; 
+        switch (def.role) {
+            case 'ANCHOR': zBase = -2.5; zVar = 0.5; break;
+            case 'SUPPORT': zBase = -1.0; zVar = 0.8; break;
+            case 'ACCENT': zBase = 0.5; zVar = 1.0; break;
+            case 'MICRO': zBase = 2.0; zVar = 1.2; break;
+        }
+        candidate.z = zBase + (Math.random() - 0.5) * zVar;
+
+        // --- KOLIZJA (Separacja 2D) ---
+        let sepFactor = 1.1;
+        if (def.role === 'MICRO') sepFactor = 1.05;
+        if (def.role === 'ANCHOR') sepFactor = 1.15;
+
+        if (!checkSeparation(candidate, def.scale / 2, bubbles, sepFactor)) {
            bestPos = candidate;
            found = true;
            break;
         }
       }
 
-      if (!found) bestPos = new THREE.Vector3((Math.random()-0.5)*10, -10, 0);
+      if (!found) bestPos = new THREE.Vector3((Math.random()-0.5)*12, -15, 0);
 
-      // 5. DEFORMACJA (ZASADA 3 - PRAWIE ZERO)
-      // Obiekty są sztywne, projektowe.
+      // --- STYL ---
       let distortF = 0.0;
-      if (def.role === 'ANCHOR') distortF = 0.03; // Minimalne życie
-      else if (def.role === 'SUPPORT') distortF = 0.02;
+      if (def.role === 'ANCHOR') distortF = 0.02; 
 
       bubbles.push({
         id: i,
         palette: finalPalette,
         position: [bestPos.x, bestPos.y, bestPos.z],
         scale: def.scale,
-        speed: 0.2, // Bardzo wolne ruchy
+        speed: 0.2, 
         distortSpeed: 0.1, 
         distortFactor: distortF,
         rotationOffset: [Math.random()*Math.PI, Math.random()*Math.PI, 0],
-        stiffness: 1.0, // Max sztywność
+        stiffness: 1.0, 
         role: def.role
       });
     });
@@ -176,26 +212,106 @@ export const generateLayout = (
     return bubbles;
   }
 
-  // --- STARE TRYBY (Chaos, Studio etc.) ---
-  // (Skrócona wersja dla czytelności - wklej tu resztę poprzedniego kodu dla STUDIO/BORDER/CHAOS)
   return generateOldLayouts(count, composition, globalTheme);
 };
 
-// Pomocnicza funkcja ze starą logiką (żeby nie kasować tego co działało)
-const generateOldLayouts = (count: number, composition: any, theme: any[]) => {
+const generateOldLayouts = (count: number, composition: CompositionType, theme: any[]) => {
     const bubbles: BubbleData[] = [];
-    // ... Tu wklej starą logikę z poprzedniego kroku dla STUDIO/BORDER/CHAOS ...
-    // Jeśli nie chcesz wklejać, mogę podać pełny plik w następnym kroku.
-    // DLA UPROSZCZENIA TERAZ: Zwracam pustą tablicę jeśli to nie SCENOGRAPHY
-    // (W realnym kodzie zostaw starą logikę w bloku `else`)
-    
-    // --- (Tu powinna być pętla ze starego LayoutEngine) ---
-    // Aby kod działał od razu, dodam tu szybki fallback dla Chaosu:
-    for (let i = 0; i < count; i++) {
-        const colorSet = theme[Math.floor(Math.random() * theme.length)];
+    // W trybie STUDIO (Organic) i BORDER (Backdrop) trzymamy stałą liczbę dla lepszej kontroli
+    const actualCount = (composition === 'STUDIO' || composition === 'BORDER') ? 20 : count;
+
+    for (let i = 0; i < actualCount; i++) {
+        const rawPalette = theme[Math.floor(Math.random() * theme.length)];
+        let pos: [number, number, number] = [0, 0, 0];
+        let scale = 1;
+        let role = 'LEGACY';
+        
+        // CZY TO JEST NASZ GŁÓWNY BOHATER? (Pierwszy obiekt)
+        const isHero = i === 0;
+
+        // 1. Logika Pozycji i Skali
+        if (composition === 'BORDER') {
+            // --- BACKDROP (Tło za produktem) ---
+            if (isHero) {
+                // WIELKI PLACEHOLDER W TLE
+                // Ustawiamy go głęboko (-6.0) i centralnie
+                pos = [
+                    (Math.random() - 0.5) * 2.0, // Lekki luz X
+                    (Math.random() - 0.5) * 1.0, // Lekki luz Y
+                    -6.0 // Głęboko w tle
+                ];
+                scale = 4.0; // Bardzo duży (robi za tło)
+                role = 'HERO_PLACEHOLDER';
+            } else {
+                // Reszta to "dekoracja" dookoła
+                const z = -2.5 - Math.random() * 5.0;
+                // Im głębiej, tym szerzej
+                const x = (Math.random() - 0.5) * (14 + Math.abs(z)*0.5); 
+                const y = (Math.random() - 0.5) * 8.0;
+                pos = [x, y, z];
+                scale = 0.5 + Math.random() * 2.0;
+            }
+        } 
+        else if (composition === 'STUDIO') {
+            // --- ORGANIC (Luźna kompozycja na podłodze) ---
+            if (isHero) {
+                // GŁÓWNY OBIEKT NA PODŁODZE
+                pos = [
+                    (Math.random() - 0.5) * 1.0, // Prawie środek X
+                    -0.5, // Leży na podłodze
+                    (Math.random() - 0.5) * 1.0  // Prawie środek Z
+                ];
+                scale = 2.5; // Dominujący
+                role = 'HERO_PLACEHOLDER';
+            } else {
+                // Reszta rozsypana dookoła Hero
+                let bestPos = new THREE.Vector3();
+                let found = false;
+                for(let k=0; k<50; k++) {
+                     bestPos.set(
+                        (Math.random()-0.5) * 9.0, 
+                        -1.5 + Math.random() * 2.5, 
+                        (Math.random()-0.5) * 5.0
+                     );
+                     // Unikamy kolizji (dla Hero dajemy większy margines 0.6)
+                     if(!checkCollisionOld(bestPos, 0.6, bubbles as any)) { 
+                        found = true; break; 
+                     }
+                }
+                if(!found) bestPos.set((Math.random()-0.5)*10, -10, 0);
+                pos = [bestPos.x, bestPos.y, bestPos.z];
+                scale = 0.6 + Math.random() * 0.9; // Mniejsze
+            }
+        }
+        else { 
+            // CHAOS / STAGE (Fallback)
+            pos = [(Math.random()-0.5)*14, (Math.random()-0.5)*9, (Math.random()-0.5)*8];
+            scale = 0.5 + Math.random() * 1.5;
+        }
+        
+        // 2. Koloryzacja (Color Weighting)
+        let finalPalette = { ...rawPalette };
+        
+        // Hero zawsze dostaje kolor bazowy (Ciemny/Solidny)
+        if (isHero || scale > 1.5) {
+            finalPalette.mid = rawPalette.base;
+            finalPalette.base = rawPalette.base;
+        } else {
+            // Drobnica jaśniejsza
+            finalPalette.mid = Math.random() > 0.5 ? rawPalette.rim : rawPalette.mid;
+        }
+
         bubbles.push({
-            id: i, palette: colorSet, position: [(Math.random()-0.5)*10, (Math.random()-0.5)*6, -2],
-            scale: 1, speed: 1, distortSpeed: 1, distortFactor: 0.3, rotationOffset: [0,0,0], stiffness: 0.5, role: 'LEGACY'
+            id: i, 
+            palette: finalPalette, 
+            position: pos, 
+            scale: scale, 
+            speed: isHero ? 0.2 : 1.0, // Hero rusza się wolniej
+            distortSpeed: isHero ? 0.1 : 1.0, 
+            distortFactor: isHero ? 0.05 : 0.3, // Hero jest sztywniejszy
+            rotationOffset: [Math.random() * Math.PI, Math.random() * Math.PI, 0], 
+            stiffness: isHero ? 0.9 : 0.5, 
+            role: role
         });
     }
     return bubbles;
