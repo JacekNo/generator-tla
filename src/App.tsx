@@ -84,15 +84,15 @@ function App() {
             <button onClick={() => setComposition('CHAOS')} style={glassBtn(composition === 'CHAOS')}>
               Chaos
             </button>
-            <button onClick={() => setComposition('STAGE')} style={glassBtn(composition === 'STAGE')}>
-              Stage
+            <button onClick={() => setComposition('STUDIO')} style={glassBtn(composition === 'STUDIO')}>
+              Organic
+            </button>
+            {/* NOWY PRZYCISK */}
+            <button onClick={() => setComposition('STUDIO_SCENOGRAPHY')} style={glassBtn(composition === 'STUDIO_SCENOGRAPHY')}>
+              Sceno
             </button>
             <button onClick={() => setComposition('BORDER')} style={glassBtn(composition === 'BORDER')}>
               Backdrop
-            </button>
-            {/* NOWE STUDIO */}
-            <button onClick={() => setComposition('STUDIO')} style={glassBtn(composition === 'STUDIO')}>
-              Floor
             </button>
           </div>
         </div>

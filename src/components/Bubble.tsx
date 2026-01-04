@@ -14,6 +14,7 @@ interface BubbleProps {
   distortSpeed?: number;
   distortFactor?: number;
   rotationOffset?: [number, number, number];
+  stiffness?: number; // Nowa właściwość
 }
 
 export const Bubble = ({ 
@@ -24,7 +25,8 @@ export const Bubble = ({
   variant = 'MATTE',
   distortSpeed = 2,
   distortFactor = 0.4,
-  rotationOffset = [0, 0, 0]
+  rotationOffset = [0, 0, 0],
+  stiffness = 0.5
 }: BubbleProps) => {
   const materialRef = useRef<any>(null);
 
@@ -40,12 +42,16 @@ export const Bubble = ({
     }
   });
 
+  // Dostrajamy fizykę "Float" w zależności od sztywności 
+  // Twardsze obiekty są cięższe = unoszą się wolniej i mniej
+  const floatIntensity = isClay ? (1 - stiffness * 0.5) * 0.8 : (isVivid ? 1.5 : 0.8);
+  const floatSpeed = isClay ? (1 - stiffness * 0.3) * 0.8 : speed;
+
   return (
     <Float 
-      // ZMNIEJSZONE TEMPO: Dla Clay ustawiamy bardzo powolny dryf (0.4)
-      speed={isClay ? speed * 0.4 : speed} 
-      rotationIntensity={isClay ? 0.5 : (isVivid ? 1.0 : 0.6)} 
-      floatIntensity={isClay ? 0.8 : (isVivid ? 1.5 : 0.8)}    
+      speed={floatSpeed} 
+      rotationIntensity={isClay ? 0.2 : 0.6} // Clay rotuje bardzo leniwie
+      floatIntensity={floatIntensity}    
       position={position}
     >
       <mesh 
@@ -55,18 +61,25 @@ export const Bubble = ({
         <sphereGeometry args={[1, 128, 128]} />
         
         {isClay ? (
+          // --- STYL CLAY: SOFT SOLID  ---
           <MeshDistortMaterial
             color={palette.mid}
             speed={distortSpeed}     
             distort={distortFactor}  
             radius={1}
-            roughness={0.45}
-            metalness={0.05}
-            clearcoat={0.1}
-            clearcoatRoughness={0.2}
-            envMapIntensity={1.2}
+            
+            // PARAMETRY MATERIAŁU "STUDIO PROP" 
+            roughness={0.35}      // Satynowy połysk (nie mat, nie lustro)
+            metalness={0.1}       // Minimalny metal dla głębi koloru
+            
+            clearcoat={0.2}       // Lekka warstwa lakieru
+            clearcoatRoughness={0.1} // Ostre odbicia na lakierze (highlighty)
+            
+            envMapIntensity={1.5} // Mocne światło studyjne
+            bumpScale={0.01}      // Mikro-faktura (opcjonalnie)
           />
         ) : (
+          // --- STARY STYL ---
           // @ts-ignore
           <velvetGrainMaterial 
             ref={materialRef}
