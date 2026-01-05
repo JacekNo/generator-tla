@@ -1,10 +1,15 @@
+// src/config/assets.ts
+
 import type { PaletteKey } from './tokens';
 
-// Mapowanie: Nazwa Trybu -> Ścieżka do pliku GLB w folderze public/models
+// WAŻNE: Nie używamy 'public/' w ścieżkach.
+// Ścieżki są relatywne do głównego pliku index.html po zbudowaniu.
+
 export const BRAND_SIGNETS: Record<PaletteKey, string | null> = {
-  'TECHNIKUM': 'public/models/sygnety_TEB-TECHNIKUM.glb', // Podmień na swoje nazwy plików
-  'LICEUM': 'public/models/sygnety_TEB-LICEUM.glb',
-  'PLASTYCZNE': 'public/models/sygnety_TEB-PLASTYCZNE.glb',
-  'DOMOWA': 'public/models/sygnety_TEB-DOMOWA.glb',
-  'MIX': 'public/models/sygnety_TEB-EDUKACJA.glb',
+  // Jeśli masz inne nazwy plików, upewnij się, że są poprawne (wielkość liter ma znaczenie!)
+  MIX: 'models/sygnety_TEB-EDUKACJA.glb', 
+  TECHNIKUM: 'models/sygnety_TEB-TECHNIKUM.glb',
+  LICEUM: 'models/sygnety_TEB-LICEUM.glb',
+  PLASTYCZNE: 'models/sygnety_TEB-PLASTYCZNE.glb',
+  DOMOWA: 'models/sygnety_TEB-E-LICEUM.glb', // Zakładam nazwę pliku, sprawdź czy taką masz!
 };

@@ -19,7 +19,7 @@ export interface BubbleData {
 
 const PHI = 1.61803398875;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); 
-const IMAGE_PATH = 'public/textures/image-placeholder.jpg';
+const IMAGE_PATH = 'textures/image-placeholder.jpg';
 
 // SKALE
 const S_MICRO   = 0.5;
