@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { Environment } from '@react-three/drei';
+import { Environment, ContactShadows } from '@react-three/drei';
 import { EffectComposer, DepthOfField, Vignette, Noise } from '@react-three/postprocessing';
 import { useMemo, forwardRef, useImperativeHandle, useState, useRef } from 'react';
 import * as THREE from 'three';
+
 import { PALETTES } from '../config/tokens';
 import type { PaletteKey } from '../config/tokens';
 import { Bubble } from './Bubble';
@@ -78,6 +79,8 @@ const ScreenshotManager = forwardRef((_, ref) => {
   return null;
 });
 
+// --- GŁÓWNA SCENA ---
+
 export const Scene = forwardRef<any, SceneProps>(({ 
   mode = 'MIX', 
   count = 20, 
@@ -87,41 +90,19 @@ export const Scene = forwardRef<any, SceneProps>(({
   seed = 0
 }, ref) => {
   
-  const isClay = bubbleStyle === 'CLAY';
-  const isStudio = composition === 'STUDIO';
-
-  // Generowanie układu
   const bubbles = useMemo(() => {
     return generateLayout(count, composition || 'CHAOS', mode || 'MIX');
   }, [mode, count, composition, seed]);
 
-  // --- LOGIKA KOLORÓW TŁA ---
   const bgGradientColors = useMemo(() => {
     const theme = PALETTES[mode] || PALETTES['MIX'];
-    
-    // Pobieramy kolory z tematu (Base=Ciemny, Rim=Jasny)
     const brandColorLight = theme[0].rim; 
     const brandColorDark = theme[0].base;
 
     if (mode === 'MIX') {
-      // DLA MIX: 4 Różne kolory w narożnikach
-      // [TopLeft, TopRight, BottomLeft, BottomRight]
-      return [
-        '#FF545E', // TM (Czerwony jasny)
-        '#40B6FF', // LO (Niebieski jasny)
-        '#DD48B1', // LP (Różowy jasny)
-        '#1E53E5'  // ED (Granatowy)
-      ];
+      return ['#FF545E', '#40B6FF', '#DD48B1', '#1E53E5'];
     } else {
-      // DLA POJEDYNCZYCH MAREK: Gradient Pionowy
-      // TopLeft == TopRight (Góra)
-      // BottomLeft == BottomRight (Dół)
-      return [
-        brandColorLight, // TL
-        brandColorLight, // TR
-        brandColorDark,  // BL
-        brandColorDark   // BR
-      ];
+      return [brandColorLight, brandColorLight, brandColorDark, brandColorDark];
     }
   }, [mode]);
 
@@ -130,42 +111,42 @@ export const Scene = forwardRef<any, SceneProps>(({
       gl={{ preserveDrawingBuffer: true, antialias: true }} 
       camera={{ position: [0, 0, 10], fov: 35 }} 
       dpr={[1, 1.5]}
-      shadows={isClay}
+      shadows
     >
       <CameraRig composition={composition} />
 
-      {/* Tło wyświetlamy tylko w trybie MISTY */}
+      {/* 1. TŁO (Czyste, bez mgły) */}
       {bgStyle === 'MISTY' ? (
-        // Przekazujemy tablicę 4 kolorów
         <Background colors={bgGradientColors} />
       ) : (
-        // W trybie CLEAN jednolite jasne tło
-        <color attach="background" args={['#f2f4f6']} />
+        <color attach="background" args={['#ffffff']} />
       )}
 
-      <Environment preset="city" blur={1} />
+      {/* 2. OŚWIETLENIE (Mocne i kontrastowe) */}
+      <Environment preset="city" blur={5} />
       
-      {isClay && (
-        <>
-          <ambientLight intensity={0.8} />
-          <directionalLight 
-            position={[5, 12, 5]} 
-            intensity={1.5} 
-            castShadow 
-            shadow-bias={-0.0001} 
-            shadow-radius={8} 
-            shadow-mapSize={[2048, 2048]} 
-          />
-          <pointLight position={[-8, 2, -5]} intensity={0.6} color="white" />
-        </>
-      )}
+      {/* AmbientLight - zmniejszony z 0.8 na 0.6 dla lepszego kontrastu cieni */}
+      <ambientLight intensity={0.6} />
 
-      {isStudio && isClay && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4.5, 0]} receiveShadow>
-          <planeGeometry args={[100, 100]} />
-          <shadowMaterial transparent opacity={0.15} color="#000" />
-        </mesh>
-      )}
+      {/* DirectionalLight - to ono robi cienie na kulkach */}
+      <directionalLight 
+        position={[5, 12, 5]} 
+        intensity={1.5} 
+        castShadow 
+        // WYSOKA JAKOŚĆ CIENI (Brak pikselozy)
+        shadow-mapSize={[2048, 2048]} 
+        // WAŻNE: shadow-radius > 0 rozmywa krawędzie cienia (miękkie brzegi)
+        shadow-radius={4} 
+        // Bias usuwa artefakty (paski na kulach)
+        shadow-bias={-0.0001} 
+        shadow-normalBias={0.04}
+      />
+      
+      {/* Światło kontrujące */}
+      <pointLight position={[-8, 2, -5]} intensity={0.6} color="white" />
+
+
+      
 
       <ScreenshotManager ref={ref} />
 
@@ -178,7 +159,7 @@ export const Scene = forwardRef<any, SceneProps>(({
       <EffectComposer disableNormalPass>
         <DepthOfField target={[0, 0, 0]} focalLength={0.05} bokehScale={2} height={700} />
         <Vignette eskil={false} offset={0.1} darkness={0.15} /> 
-        <Noise opacity={isClay ? 0.0 : 0.02} />
+        <Noise opacity={bubbleStyle === 'CLAY' ? 0.02 : 0.0} />
       </EffectComposer>
     </Canvas>
   );

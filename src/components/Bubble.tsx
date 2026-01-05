@@ -4,19 +4,18 @@ import { useFrame, extend } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, shaderMaterial } from '@react-three/drei';
 import * as THREE from 'three';
 
-// --- 1. SHADER VIVID (VELVET) - NAPRAWIONY I USPOKOJONY ---
+// --- SHADER GLUTKA (VIVID/VELVET) - NAPRAWIONY ---
 const VelvetGrainMaterial = shaderMaterial(
   {
     uTime: 0,
-    // TU BYŁ BŁĄD: Nie możemy tu używać 'palette', bo ona tu nie istnieje.
-    // Ustawiamy bezpieczne wartości domyślne (startowe).
     uColorBase: new THREE.Color('#000000'), 
     uColorMid: new THREE.Color('#888888'),
     uColorRim: new THREE.Color('#ffffff'),
     uGrainOpacity: 0.04,
-    uDistortStrength: 0.1, // Uspokojona wartość
+    // FIX: Ustawiamy domyślną siłę na małą, zgodnie z życzeniem
+    uDistortStrength: 0.05, 
   },
-  // Vertex Shader (Geometria)
+  // --- VERTEX SHADER (Kształt i Ruch) ---
   `
     uniform float uTime;
     uniform float uDistortStrength;
@@ -24,12 +23,11 @@ const VelvetGrainMaterial = shaderMaterial(
     varying vec3 vNormal;
     varying vec3 vViewPosition;
 
-    // Simplex Noise
+    // (Funkcje szumu SimplexNoise - bez zmian)
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
     vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
     vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
     vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-
     float snoise(vec3 v) {
       const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
       const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
@@ -80,13 +78,12 @@ const VelvetGrainMaterial = shaderMaterial(
     void main() {
       vUv = uv;
       vNormal = normalize(normalMatrix * normal);
-      
       vec3 pos = position;
       
-      // KLUCZOWA ZMIANA: Zmniejszona częstotliwość (0.6) i prędkość (0.15)
-      // To sprawia, że fale są duże, powolne i "ciekłe", a nie chaotyczne.
-      float noiseVal = snoise(vec3(pos.x * 0.6, pos.y * 0.6, uTime * 0.15));
+      // FIX: Uspokojona deformacja. Mniejsza częstotliwość (0.6) i wolniejszy czas (0.2)
+      float noiseVal = snoise(vec3(pos.x * 0.6, pos.y * 0.6, uTime * 0.2));
       
+      // FIX: Usunięty mnożnik (* 2.0). Teraz siła zależy bezpośrednio od uDistortStrength.
       pos += normal * noiseVal * uDistortStrength;
 
       vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -94,40 +91,42 @@ const VelvetGrainMaterial = shaderMaterial(
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
-  // Fragment Shader (Kolory)
+  // --- FRAGMENT SHADER (Kolor i Światło) ---
   `
     uniform vec3 uColorBase;
     uniform vec3 uColorMid;
     uniform vec3 uColorRim;
     uniform float uGrainOpacity;
-    
     varying vec2 vUv;
     varying vec3 vNormal;
     varying vec3 vViewPosition;
 
-    float random(vec2 p) {
-      return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453);
-    }
+    float random(vec2 p) { return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453); }
 
     void main() {
       vec3 normal = normalize(vNormal);
       vec3 viewDir = normalize(vViewPosition);
+      
+      // 1. Podstawowy Fresnel (N dot V)
+      float NdotV = dot(normal, viewDir);
+      // Odwracamy: 0.0 w centrum, 1.0 na krawędzi
+      float fresnel = clamp(1.0 - NdotV, 0.0, 1.0);
 
-      float fresnel = dot(viewDir, normal);
-      fresnel = clamp(1.0 - fresnel, 0.0, 1.0);
-
-      // Głębokie kolory (Velvet Look)
-      float midMix = pow(fresnel, 2.5); 
+      // 2. Mieszanie Baza -> Mid (Szerokie przejście)
+      // Używamy potęgi 2.0, żeby kolor średni wchodził dość szybko, ale zostawiał ciemny środek
+      float midMix = pow(fresnel, 2.0);
       vec3 color = mix(uColorBase, uColorMid, midMix);
 
-      float rimMix = pow(fresnel, 4.0);
-      color = mix(color, uColorRim, rimMix);
+      // 3. Mieszanie -> Rim (Jasna krawędź)
+      // Używamy wyższej potęgi (3.0), żeby krawędź była wyraźna i ostra
+      float rimIntensity = pow(fresnel, 3.0);
+      color = mix(color, uColorRim, rimIntensity);
 
+      // 4. Ziarno
       float grain = random(vUv + normal.xy * 2.0);
       color += (grain - 0.5) * uGrainOpacity;
 
       gl_FragColor = vec4(color, 1.0);
-      
       #include <tonemapping_fragment>
       #include <colorspace_fragment> 
     }
@@ -136,54 +135,48 @@ const VelvetGrainMaterial = shaderMaterial(
 
 extend({ VelvetGrainMaterial });
 
-// --- 2. KOMPONENT BUBBLE ---
 interface BubbleProps {
   palette: { base: string; mid: string; rim: string };
   position: [number, number, number];
   scale: number;
-  speed: number;
+  movement: {
+    speed: number;
+    floatIntensity: number;
+    rotationIntensity: number;
+  };
+  distortSpeed: number;
+  distortFactor: number;
+  rotationOffset: [number, number, number];
   variant?: 'MATTE' | 'VIVID' | 'CLAY';
-  distortSpeed?: number;
-  distortFactor?: number;
-  rotationOffset?: [number, number, number];
-  stiffness?: number;
-  role?: string;
 }
 
 export const Bubble = ({ 
   palette, 
   position, 
   scale, 
-  speed, 
-  variant = 'MATTE',
-  distortSpeed = 2,
-  distortFactor = 0.4,
-  rotationOffset = [0, 0, 0],
-  stiffness = 0.5,
-  role
+  movement, 
+  distortSpeed,
+  distortFactor,
+  rotationOffset,
+  variant = 'CLAY'
 }: BubbleProps) => {
   const materialRef = useRef<any>(null);
   
-  const isClay = variant === 'CLAY';
-  const isMatte = variant === 'MATTE';
-  const isVivid = variant === 'VIVID';
+  const isClay = variant === 'CLAY';   // BĄBEL
+  const isMatte = variant === 'MATTE'; // BAŃKA
+  const isVivid = variant === 'VIVID'; // GLUTEK
 
   useFrame(({ clock }) => {
-    // Animacja czasu tylko dla VIVID
     if (materialRef.current && isVivid && materialRef.current.uTime !== undefined) {
       materialRef.current.uTime = clock.getElapsedTime();
     }
   });
 
-  const floatIntensity = isClay ? (1 - stiffness * 0.5) * 0.4 : 0.8;
-  const floatSpeed = isClay ? (1 - stiffness * 0.3) * 0.2 : speed;
-  const rotationIntensity = isClay ? 0.2 : 0.6;
-
   return (
     <Float 
-      speed={floatSpeed} 
-      rotationIntensity={rotationIntensity} 
-      floatIntensity={floatIntensity}    
+      speed={movement.speed} 
+      rotationIntensity={movement.rotationIntensity} 
+      floatIntensity={movement.floatIntensity}    
       position={position}
     >
       <mesh 
@@ -195,47 +188,41 @@ export const Bubble = ({
         <sphereGeometry args={[1, 128, 128]} />
         
         {isClay ? (
-          // --- 1. CLAY (GUMMY) ---
+          // --- BĄBEL (CLAY) ---
+          // Miękka, matowa kulka, lekko pognieciona (distort=0.3)
           <MeshDistortMaterial
             ref={materialRef}
             side={THREE.FrontSide}
-            speed={distortSpeed}     
-            distort={distortFactor}  
+            speed={2}                 
+            distort={0.3}             
             radius={1}
             color={palette.mid} 
-            roughness={0.45}      
-            metalness={0.1}       
-            transmission={0.4}    
-            thickness={3.0}       
-            ior={1.45}            
-            attenuationColor={palette.base} 
-            attenuationDistance={1.5}
-            clearcoat={0.1}       
-            clearcoatRoughness={0.5}
-            envMapIntensity={1.2} 
+            roughness={0.7}       
+            metalness={0.0}       
+            envMapIntensity={0.8} 
           />
         ) : isMatte ? (
-          // --- 2. MATTE (PRZEZROCZYSTE/ETHEREAL) ---
-          // To jest ten nowy kod, który chciałeś dodać
+          // --- BAŃKA (MATTE/GLASS) ---
+          // Przezroczysta, szklana
           <meshPhysicalMaterial
             color="#ffffff"        
-            transmission={0.99}    // Max przezroczystości
+            transmission={0.99}    
             side={THREE.FrontSide}
             opacity={1}
             transparent={true}
-            roughness={0.8}        // Idealnie gładkie
+            roughness={0.2} 
             metalness={0.0}
-            ior={1.1}              // Bańka mydlana
+            ior={1.1}              
             thickness={0.1}        
-            sheen={1.0}            // Świecąca krawędź
+            sheen={1.0}            
             sheenRoughness={0.2}   
-            sheenColor={palette.mid} // Kolor tylko na krawędzi
+            sheenColor={palette.mid} 
             envMapIntensity={1.5}  
             clearcoat={0.5}        
           />
         ) : (
-          // --- 3. VIVID (VELVET) ---
-          // Uspokojony shader
+          // --- GLUTEK (VIVID/VELVET) ---
+          // Shader z naprawioną głębią i uspokojoną deformacją (0.05)
           // @ts-ignore
           <velvetGrainMaterial 
             ref={materialRef}
@@ -244,7 +231,7 @@ export const Bubble = ({
             uColorMid={new THREE.Color(palette.mid)}
             uColorRim={new THREE.Color(palette.rim)}
             uGrainOpacity={0.04}
-            uDistortStrength={0.1} // Umiarkowana deformacja
+            uDistortStrength={0.05} // <--- FIX: Mała siła deformacji
           />
         )}
       </mesh>
