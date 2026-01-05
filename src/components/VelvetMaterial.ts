@@ -1,3 +1,4 @@
+// src/components/VelvetMaterial.ts
 import { shaderMaterial } from '@react-three/drei';
 import { extend } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -9,7 +10,7 @@ const VelvetGrainMaterial = shaderMaterial(
     uColorMid: new THREE.Color('#888888'),
     uColorRim: new THREE.Color('#ffffff'),
     uGrainOpacity: 0.04,
-    uDistortStrength: 0.1, // ZWIĘKSZONE (było 0.05) - dla lepszego efektu ruchu
+    uDistortStrength: 0.05, 
   },
   // Vertex Shader
   `
@@ -19,16 +20,11 @@ const VelvetGrainMaterial = shaderMaterial(
     varying vec3 vNormal;
     varying vec3 vViewPosition;
 
-    // ... (Funkcje szumu noise - pozostawiamy bez zmian, są długie) ...
-    // WKLEJ TUTAJ FUNKCJE SZUMU (mod289, permute, snoise itd.) z poprzednich plików
-    // Dla skrócenia odpowiedzi ich nie powielam, bo są identyczne.
-    // Upewnij się, że masz tu definicję 'snoise'.
-    
-    // --- SKRÓCONY BLOK SZUMU (WKLEJ PEŁNY Z POPRZEDNIEGO PLIKU) ---
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
     vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
     vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
     vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
     float snoise(vec3 v) {
       const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
       const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
@@ -80,18 +76,14 @@ const VelvetGrainMaterial = shaderMaterial(
       vUv = uv;
       vNormal = normalize(normalMatrix * normal);
       vec3 pos = position;
-      
-      // ZMIANA: Szybszy czas (0.6) = wyraźniejszy, ale płynny ruch
-      float noiseVal = snoise(vec3(pos.x * 0.8, pos.y * 0.8, uTime * 0.6));
-      
+      float noiseVal = snoise(vec3(pos.x * 0.6, pos.y * 0.6, uTime * 0.2));
       pos += normal * noiseVal * uDistortStrength;
-
       vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
       vViewPosition = -mvPosition.xyz;
       gl_Position = projectionMatrix * mvPosition;
     }
   `,
-  // Fragment Shader (bez zmian)
+  // Fragment Shader
   `
     uniform vec3 uColorBase;
     uniform vec3 uColorMid;
@@ -121,5 +113,7 @@ const VelvetGrainMaterial = shaderMaterial(
   `
 );
 
+// Rejestrujemy materiał globalnie
 extend({ VelvetGrainMaterial });
+
 export { VelvetGrainMaterial };

@@ -1,122 +1,145 @@
 import { useState, useRef } from 'react';
 import { Scene } from './components/Scene';
-import type { BackgroundStyle, BubbleStyle, CompositionType } from './components/Scene';
+import type { BackgroundStyle, BubbleStyle } from './components/Scene';
+import type { CompositionType } from './logic/LayoutEngine';
 import type { PaletteKey } from './config/tokens';
 
-// --- TYPY POMOCNICZE ---
-type SceneHandle = {
-  capture: () => void;
-};
+// --- DANE KONFIGURACYJNE ---
+const MODES: PaletteKey[] = ['MIX', 'TECHNIKUM', 'LICEUM', 'PLASTYCZNE', 'DOMOWA'];
 
-// --- STYLES ---
+const COMPOSITIONS: { id: CompositionType; label: string }[] = [
+  { id: 'CHAOS', label: 'Chmura' },
+  { id: 'STUDIO_SCENOGRAPHY', label: 'Scena' },
+  { id: 'BORDER', label: 'Rama' },
+  { id: 'STUDIO', label: 'Molekuła' },
+];
+
+const STYLES: { id: BubbleStyle; label: string }[] = [
+  { id: 'MATTE', label: 'Bańka' },
+  { id: 'CLAY', label: 'Bąbel' },
+  { id: 'VIVID', label: 'Glutek' },
+];
+
+// --- HELPER STYLÓW ---
+// Funkcja generująca style dla szklanych przycisków
+const getGlassBtnStyle = (isActive: boolean, overrides: React.CSSProperties = {}) => ({
+  background: isActive ? '#1a1a1a' : 'rgba(255, 255, 255, 0.75)',
+  color: isActive ? '#fff' : '#1a1a1a',
+  border: isActive ? '1px solid #1a1a1a' : '1px solid rgba(255, 255, 255, 0.6)',
+  backdropFilter: 'blur(16px)',
+  WebkitBackdropFilter: 'blur(16px)',
+  padding: '10px 20px',
+  borderRadius: '40px', // Bardziej zaokrąglone
+  cursor: 'pointer',
+  fontFamily: 'Inter, sans-serif',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  transition: 'all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  boxShadow: isActive 
+    ? '0 6px 16px rgba(0,0,0,0.2)' 
+    : '0 2px 8px rgba(0,0,0,0.05)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  ...overrides,
+});
+
+// Główne style kontenerów
 const styles = {
   container: {
     width: '100vw',
     height: '100vh',
     position: 'relative' as const,
     overflow: 'hidden',
+    background: '#f2f4f6',
   },
+  // Panel Lewy Góra (Tryby i Materiały)
   uiTopLeft: {
     position: 'absolute' as const,
-    top: 40,
-    left: 40,
+    top: 30,
+    left: 30,
     zIndex: 10,
     display: 'flex',
     flexDirection: 'column' as const,
+    gap: '24px',
   },
+  // Panel Prawy Góra (Aura, Układy, Export)
   uiTopRight: {
     position: 'absolute' as const,
-    top: 40,
-    right: 40,
+    top: 30,
+    right: 30,
     zIndex: 10,
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'flex-end',
-    gap: '24px',
+    gap: '20px',
   },
-  uiBottomLeft: {
+  // Panel Dolny Środek (Losowanie)
+  uiBottomCenter: {
     position: 'absolute' as const,
-    bottom: 40,
-    left: 40,
-    color: '#1a1a1a',
-    fontFamily: 'Inter, Helvetica, Arial, sans-serif',
+    bottom: 50,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 10,
+  },
+  // Stopka
+  footer: {
+    position: 'absolute' as const,
+    bottom: 12,
+    width: '100%',
+    textAlign: 'center' as const,
+    color: '#666',
+    fontFamily: 'Inter, sans-serif',
+    fontSize: '10px',
+    fontWeight: 500,
+    opacity: 0.7,
+    letterSpacing: '0.5px',
     pointerEvents: 'none' as const,
-    opacity: 0.8,
-    mixBlendMode: 'multiply' as const,
   },
-  label: {
-    fontSize: '0.65rem', // Troszkę mniejsze, bardziej eleganckie
-    fontWeight: 700,
-    color: '#888',
+  sectionLabel: {
+    fontSize: '0.65rem',
     textTransform: 'uppercase' as const,
+    letterSpacing: '1.5px',
+    color: '#555',
     marginBottom: '8px',
-    letterSpacing: '1.5px', // Szerszy spacing wygląda bardziej "pro"
-    opacity: 0.8,
-  },
-  group: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '6px',
-    marginBottom: '28px',
+    fontWeight: 800,
+    marginLeft: '4px',
   },
   row: {
     display: 'flex',
     gap: '8px',
   },
-  title: {
-    margin: 0,
-    fontSize: '2.5rem',
-    fontWeight: 800,
-    letterSpacing: '-1px',
-    lineHeight: '1.1',
+  columnEnd: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '6px',
+    alignItems: 'flex-end',
   },
-  meta: {
-    marginTop: '10px',
-    fontSize: '0.75rem',
-    fontFamily: 'monospace',
+  exportBtn: {
+    background: '#E30613', // TEB Red
+    color: 'white',
+    border: 'none',
+    padding: '12px 32px',
+    borderRadius: '40px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: '0.8rem',
     textTransform: 'uppercase' as const,
     letterSpacing: '1px',
-    display: 'flex',
-    gap: '20px',
-    borderTop: '1px solid rgba(0,0,0,0.1)',
-    paddingTop: '10px',
-    width: 'fit-content',
-    color: '#555'
-  },
+    boxShadow: '0 8px 24px rgba(227, 6, 19, 0.3)',
+    transition: 'transform 0.2s',
+  }
 };
-
-// Funkcja generująca styl przycisku
-const getGlassBtnStyle = (active: boolean, extraStyles: React.CSSProperties = {}) => ({
-  background: active ? '#1a1a1a' : 'rgba(255, 255, 255, 0.5)',
-  color: active ? '#fff' : '#1a1a1a',
-  border: active ? '1px solid transparent' : '1px solid rgba(255,255,255,0.6)',
-  padding: '10px 16px', // Nieco większy padding dla elegancji
-  cursor: 'pointer',
-  borderRadius: '40px', // Bardziej zaokrąglone
-  fontWeight: 600,
-  fontSize: '0.7rem',
-  backdropFilter: 'blur(12px)',
-  transition: 'all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)',
-  boxShadow: active ? '0 4px 12px rgba(0,0,0,0.15)' : 'none',
-  minWidth: '60px',
-  textAlign: 'center' as const,
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  ...extraStyles,
-});
-
-// --- DANE KONFIGURACYJNE ---
-const MODES: PaletteKey[] = ['TECHNIKUM', 'LICEUM', 'PLASTYCZNE', 'DOMOWA', 'MIX'];
 
 function App() {
   const [mode, setMode] = useState<PaletteKey>('MIX');
-  // ZMIANA DEFAULTÓW:
-  const [bgStyle, setBgStyle] = useState<BackgroundStyle>('CLEAN'); 
-  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>('CLAY'); // Startujemy od RESIN (Clay)
-  const [composition, setComposition] = useState<CompositionType>('CHAOS');
+  const [layout, setLayout] = useState<CompositionType>('STUDIO_SCENOGRAPHY');
+  const [bgStyle, setBgStyle] = useState<BackgroundStyle>('CLEAN');
+  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>('CLAY');
   const [seed, setSeed] = useState(0);
-  
-  const sceneRef = useRef<SceneHandle>(null);
+
+  const sceneRef = useRef<any>(null);
 
   const handleDownload = () => {
     if (sceneRef.current) sceneRef.current.capture();
@@ -126,153 +149,133 @@ function App() {
     setSeed(Math.random());
   };
 
-  // Mapowanie nazw technicznych na wizualne (UI Labels)
-  const getMaterialLabel = (style: BubbleStyle) => {
-    switch(style) {
-      case 'CLAY': return 'Bąbel';  // Nowa nazwa dla Clay
-      case 'VIVID': return 'Glutek'; // Nowa nazwa dla Vivid
-      case 'MATTE': return 'Bańka';  // Nowa nazwa dla Matte (Bańki)
-      default: return style;
-    }
-  };
-
-  const getCompLabel = (comp: CompositionType) => {
-    switch(comp) {
-      case 'CHAOS': return 'Chaos';
-      case 'STUDIO': return 'Molekuła';
-      case 'STUDIO_SCENOGRAPHY': return 'Scena';
-      case 'BORDER': return 'Rama';
-      default: return comp;
-    }
-  };
-
   return (
     <div style={styles.container}>
-      <Scene 
-        ref={sceneRef} 
-        mode={mode} 
-        bgStyle={bgStyle} 
-        bubbleStyle={bubbleStyle}
-        composition={composition}
-        seed={seed}
-        count={20} 
-      />
       
-      {/* --- UI: LEWY GÓRNY RÓG --- */}
+      {/* --- SCENA 3D --- */}
+      <Scene 
+        ref={sceneRef}
+        mode={mode}
+        composition={layout}
+        bgStyle={bgStyle}
+        bubbleStyle={bubbleStyle}
+        count={25}
+        seed={seed}
+      />
+
+      {/* --- PANEL LEWY: KONFIGURACJA BRANDU --- */}
       <div style={styles.uiTopLeft}>
-        
-        {/* Grupa 1: MATERIAŁ (Najważniejsze, więc teraz na górze) */}
-        <div style={styles.group}>
-          <div style={styles.label}>Material</div>
+        {/* Brand */}
+        <div>
+          <div style={styles.sectionLabel}>Brand Mode</div>
           <div style={styles.row}>
-            {/* ZMIENIONA KOLEJNOŚĆ: Najpierw Resin (Clay), potem Velvet (Vivid), na końcu Glass (Matte) */}
-            <button onClick={() => setBubbleStyle('CLAY')} style={getGlassBtnStyle(bubbleStyle === 'CLAY')}>
-              {getMaterialLabel('CLAY')}
-            </button>
-            <button onClick={() => setBubbleStyle('VIVID')} style={getGlassBtnStyle(bubbleStyle === 'VIVID')}>
-              {getMaterialLabel('VIVID')}
-            </button>
-            <button onClick={() => setBubbleStyle('MATTE')} style={getGlassBtnStyle(bubbleStyle === 'MATTE')}>
-              {getMaterialLabel('MATTE')}
-            </button>
+            {MODES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={getGlassBtnStyle(mode === m)}
+              >
+                {m}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Grupa 2: UKŁAD */}
-        <div style={styles.group}>
-          <div style={styles.label}>Layout</div>
-          <div style={styles.row}>
-            <button onClick={() => setComposition('CHAOS')} style={getGlassBtnStyle(composition === 'CHAOS')}>
-              {getCompLabel('CHAOS')}
-            </button>
-            <button onClick={() => setComposition('STUDIO')} style={getGlassBtnStyle(composition === 'STUDIO')}>
-              {getCompLabel('STUDIO')}
-            </button>
-            <button onClick={() => setComposition('STUDIO_SCENOGRAPHY')} style={getGlassBtnStyle(composition === 'STUDIO_SCENOGRAPHY')}>
-              {getCompLabel('STUDIO_SCENOGRAPHY')}
-            </button>
-            <button onClick={() => setComposition('BORDER')} style={getGlassBtnStyle(composition === 'BORDER')}>
-              {getCompLabel('BORDER')}
-            </button>
-          </div>
-        </div>
-
-        {/* Grupa 3: TŁO */}
-        <div style={styles.group}>
-          <div style={styles.label}>Atmosphere</div>
-          <div style={styles.row}>
-            <button onClick={() => setBgStyle('CLEAN')} style={getGlassBtnStyle(bgStyle === 'CLEAN')}>
-              Pure
-            </button>
-            <button onClick={() => setBgStyle('MISTY')} style={getGlassBtnStyle(bgStyle === 'MISTY')}>
-              Aura
-            </button>
-          </div>
+        {/* Material */}
+        <div>
+           <div style={styles.sectionLabel}>Material Style</div>
+           <div style={styles.row}>
+            {STYLES.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setBubbleStyle(s.id)}
+                style={getGlassBtnStyle(bubbleStyle === s.id)}
+              >
+                {s.label}
+              </button>
+            ))}
+           </div>
         </div>
       </div>
 
-      {/* --- UI: PRAWY GÓRNY RÓG --- */}
+      {/* --- PANEL PRAWY: KOMPOZYCJA I AKCJE --- */}
       <div style={styles.uiTopRight}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-          {MODES.map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              style={getGlassBtnStyle(mode === m, { minWidth: '120px', textAlign: 'right' })}
-            >
-              {m.charAt(0) + m.slice(1).toLowerCase()}
-            </button>
-          ))}
+        
+        {/* DUŻY PRZEŁĄCZNIK TŁA */}
+        <div style={{ marginBottom: '10px' }}>
+          <div style={{ ...styles.sectionLabel, textAlign: 'right' }}>Background</div>
+          <button 
+             onClick={() => setBgStyle(bgStyle === 'CLEAN' ? 'MISTY' : 'CLEAN')}
+             // Specjalny styl dla przycisku Aury
+             style={getGlassBtnStyle(bgStyle === 'MISTY', { 
+               width: '180px', 
+               justifyContent: 'space-between',
+               background: bgStyle === 'MISTY' ? '#E30613' : 'rgba(255,255,255,0.7)', // Czerwony jak aktywny
+               color: bgStyle === 'MISTY' ? '#fff' : '#333',
+               border: 'none'
+             })}
+           >
+             <span>Aura Effect</span>
+             <span>{bgStyle === 'MISTY' ? 'ON' : 'OFF'}</span>
+           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            onClick={handleShuffle}
-            title="Randomize"
-            style={getGlassBtnStyle(false, {
-              minWidth: 'auto',
-              background: 'rgba(255,255,255,0.8)',
-              color: '#333',
-              fontSize: '1.2rem',
-              padding: '8px 14px',
-            })}
-          >
-            🎲
-          </button>
+        {/* Wybór Layoutu */}
+        <div>
+          <div style={{ ...styles.sectionLabel, textAlign: 'right' }}>Composition</div>
+          <div style={styles.columnEnd}>
+            {COMPOSITIONS.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setLayout(c.id)}
+                style={getGlassBtnStyle(layout === c.id, { width: '180px', justifyContent: 'flex-end' })}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
+        {/* Export Button */}
+        <div style={{ marginTop: '20px' }}>
           <button
             onClick={handleDownload}
-            style={{
-              background: '#E30613',
-              color: 'white',
-              border: 'none',
-              padding: '12px 28px',
-              borderRadius: '40px',
-              cursor: 'pointer',
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: '1px',
-              boxShadow: '0 8px 24px rgba(227, 6, 19, 0.35)',
-              transition: 'transform 0.2s',
-            }}
+            style={styles.exportBtn}
             onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
             onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1.0)'}
           >
-            Export 4K
+            Zapisz Obraz 4K
           </button>
         </div>
       </div>
 
-      {/* --- UI: LEWY DOLNY RÓG --- */}
-      <div style={styles.uiBottomLeft}>
-        <h1 style={styles.title}>Brand Generator</h1>
-        <div style={styles.meta}>
-          <span>{mode}</span>
-          <span>// {getCompLabel(composition)}</span>
-          <span>// {getMaterialLabel(bubbleStyle)}</span>
-        </div>
+      {/* --- CENTRUM DÓŁ: WIELKI PRZYCISK SHUFFLE --- */}
+      <div style={styles.uiBottomCenter}>
+        <button 
+          onClick={handleShuffle}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0) scale(1.0)'}
+          style={getGlassBtnStyle(false, { 
+            fontSize: '1rem', 
+            padding: '16px 48px',
+            background: '#ffffff', // Czysta biel dla kontrastu
+            color: '#111',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+            border: 'none',
+            fontWeight: 800,
+            letterSpacing: '0.5px'
+          })}
+        >
+          <span style={{ fontSize: '1.4rem' }}>🎲</span>
+          <span>LOSUJ KOMPOZYCJĘ</span>
+        </button>
       </div>
+
+      {/* --- STOPKA (FOOTER) --- */}
+      <div style={styles.footer}>
+        GENERATED BY PAW SYSTEM • SZKOŁY ŚREDNIE - TEB EDUKACJA
+      </div>
+
     </div>
   );
 }

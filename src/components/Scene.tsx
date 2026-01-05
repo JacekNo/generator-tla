@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { Environment, ContactShadows } from '@react-three/drei';
+import { Environment } from '@react-three/drei';
 import { EffectComposer, DepthOfField, Vignette, Noise } from '@react-three/postprocessing';
 import { useMemo, forwardRef, useImperativeHandle, useState, useRef } from 'react';
 import * as THREE from 'three';
@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { PALETTES } from '../config/tokens';
 import type { PaletteKey } from '../config/tokens';
 import { Bubble } from './Bubble';
+import { Signet } from './Signet';
 import { Background } from './Background';
 import { generateLayout } from '../logic/LayoutEngine';
 import type { CompositionType } from '../logic/LayoutEngine';
@@ -36,7 +37,7 @@ const CameraRig = ({ composition }: { composition: CompositionType }) => {
       targetPos.set(0, 0.5, 16); 
     } 
     else if (composition === 'STUDIO') {
-      target = new THREE.Vector3(0, -1.2, 0);
+      target = new THREE.Vector3(0, -1.2, 0); // Kamera też patrzy trochę niżej
       targetPos.set(0, 1.5, 19); 
     } 
     else if (composition === 'BORDER') {
@@ -82,12 +83,7 @@ const ScreenshotManager = forwardRef((_, ref) => {
 // --- GŁÓWNA SCENA ---
 
 export const Scene = forwardRef<any, SceneProps>(({ 
-  mode = 'MIX', 
-  count = 20, 
-  bgStyle = 'CLEAN',
-  bubbleStyle = 'MATTE',
-  composition = 'CHAOS', 
-  seed = 0
+  mode = 'MIX', count = 20, bgStyle = 'CLEAN', bubbleStyle = 'MATTE', composition = 'CHAOS', seed = 0
 }, ref) => {
   
   const bubbles = useMemo(() => {
@@ -98,13 +94,31 @@ export const Scene = forwardRef<any, SceneProps>(({
     const theme = PALETTES[mode] || PALETTES['MIX'];
     const brandColorLight = theme[0].rim; 
     const brandColorDark = theme[0].base;
-
-    if (mode === 'MIX') {
-      return ['#FF545E', '#40B6FF', '#DD48B1', '#1E53E5'];
-    } else {
-      return [brandColorLight, brandColorLight, brandColorDark, brandColorDark];
-    }
+    if (mode === 'MIX') return ['#FF545E', '#40B6FF', '#DD48B1', '#1E53E5'];
+    else return [brandColorLight, brandColorLight, brandColorDark, brandColorDark];
   }, [mode]);
+
+  // KONFIGURACJA DEPTH OF FIELD (POPRAWIONA)
+  const dofProps = useMemo(() => {
+    if (composition === 'CHAOS') {
+      return {
+        // FIX: Celujemy idealnie w sygnet (Z = -5)
+        target: [0, 0, -5], 
+        // FIX: FocalLength nieco mniejszy, by złapać szerszy zakres ostrości
+        focalLength: 0.02, 
+        // FIX: Zmniejszony bokeh z 6 na 4, żeby nie rozmywało krawędzi sygnetu
+        bokehScale: 4, 
+        height: 700
+      };
+    } else {
+      return {
+        target: [0, 0, 0], 
+        focalLength: 0.05, 
+        bokehScale: 2, 
+        height: 700
+      };
+    }
+  }, [composition]);
 
   return (
     <Canvas 
@@ -115,49 +129,43 @@ export const Scene = forwardRef<any, SceneProps>(({
     >
       <CameraRig composition={composition} />
 
-      {/* 1. TŁO (Czyste, bez mgły) */}
-      {bgStyle === 'MISTY' ? (
-        <Background colors={bgGradientColors} />
-      ) : (
-        <color attach="background" args={['#ffffff']} />
-      )}
+      {bgStyle === 'MISTY' ? <Background colors={bgGradientColors} /> : <color attach="background" args={['#ffffff']} />}
 
-      {/* 2. OŚWIETLENIE (Mocne i kontrastowe) */}
       <Environment preset="city" blur={5} />
-      
-      {/* AmbientLight - zmniejszony z 0.8 na 0.6 dla lepszego kontrastu cieni */}
-      <ambientLight intensity={0.6} />
-
-      {/* DirectionalLight - to ono robi cienie na kulkach */}
+      <ambientLight intensity={0.7} />
       <directionalLight 
-        position={[5, 12, 5]} 
-        intensity={1.5} 
-        castShadow 
-        // WYSOKA JAKOŚĆ CIENI (Brak pikselozy)
-        shadow-mapSize={[2048, 2048]} 
-        // WAŻNE: shadow-radius > 0 rozmywa krawędzie cienia (miękkie brzegi)
-        shadow-radius={4} 
-        // Bias usuwa artefakty (paski na kulach)
-        shadow-bias={-0.0001} 
-        shadow-normalBias={0.04}
+        position={[5, 12, 5]} intensity={1.5} castShadow 
+        shadow-mapSize={[2048, 2048]} shadow-radius={4} shadow-bias={-0.0005} shadow-normalBias={0.05}
       />
-      
-      {/* Światło kontrujące */}
       <pointLight position={[-8, 2, -5]} intensity={0.6} color="white" />
-
-
-      
 
       <ScreenshotManager ref={ref} />
 
       <group>
-        {bubbles.map((props) => (
-          <Bubble key={props.id} {...props} variant={bubbleStyle} />
-        ))}
+        {bubbles.map((props) => {
+          if (props.role === 'SIGNET' && props.modelPath) {
+            return (
+              <Signet 
+                key={props.id} 
+                {...props} 
+                modelPath={props.modelPath}
+                mode={mode} 
+                variant={bubbleStyle}
+                bgStyle={bgStyle}
+              />
+            );
+          }
+          return <Bubble key={props.id} {...props} variant={bubbleStyle} />;
+        })}
       </group>
 
       <EffectComposer disableNormalPass>
-        <DepthOfField target={[0, 0, 0]} focalLength={0.05} bokehScale={2} height={700} />
+        <DepthOfField 
+          target={dofProps.target as [number, number, number]} 
+          focalLength={dofProps.focalLength} 
+          bokehScale={dofProps.bokehScale} 
+          height={dofProps.height} 
+        />
         <Vignette eskil={false} offset={0.1} darkness={0.15} /> 
         <Noise opacity={bubbleStyle === 'CLAY' ? 0.02 : 0.0} />
       </EffectComposer>
