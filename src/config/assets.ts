@@ -11,5 +11,5 @@ export const BRAND_SIGNETS: Record<PaletteKey, string | null> = {
   TECHNIKUM: 'models/sygnety_TEB-TECHNIKUM.glb',
   LICEUM: 'models/sygnety_TEB-LICEUM.glb',
   PLASTYCZNE: 'models/sygnety_TEB-PLASTYCZNE.glb',
-  DOMOWA: 'models/sygnety_TEB-E-LICEUM.glb', // Zakładam nazwę pliku, sprawdź czy taką masz!
+  DOMOWA: 'models/sygnety_TEB-DOMOWA.glb', // Zakładam nazwę pliku, sprawdź czy taką masz!
 };
