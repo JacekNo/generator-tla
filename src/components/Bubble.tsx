@@ -8,11 +8,13 @@ import * as THREE from 'three';
 const VelvetGrainMaterial = shaderMaterial(
   {
     uTime: 0,
-    uColorBase: new THREE.Color('#000000'),
+    // TU BYŁ BŁĄD: Nie możemy tu używać 'palette', bo ona tu nie istnieje.
+    // Ustawiamy bezpieczne wartości domyślne (startowe).
+    uColorBase: new THREE.Color('#000000'), 
     uColorMid: new THREE.Color('#888888'),
     uColorRim: new THREE.Color('#ffffff'),
     uGrainOpacity: 0.04,
-    uDistortStrength: 0.3, // Zmniejszona siła, żeby nie szarpało
+    uDistortStrength: 0.1, // Uspokojona wartość
   },
   // Vertex Shader (Geometria)
   `
@@ -173,8 +175,8 @@ export const Bubble = ({
     }
   });
 
-  const floatIntensity = isClay ? (1 - stiffness * 0.5) * 0.8 : 0.8;
-  const floatSpeed = isClay ? (1 - stiffness * 0.3) * 0.8 : speed;
+  const floatIntensity = isClay ? (1 - stiffness * 0.5) * 0.4 : 0.8;
+  const floatSpeed = isClay ? (1 - stiffness * 0.3) * 0.2 : speed;
   const rotationIntensity = isClay ? 0.2 : 0.6;
 
   return (
@@ -196,6 +198,7 @@ export const Bubble = ({
           // --- 1. CLAY (GUMMY) ---
           <MeshDistortMaterial
             ref={materialRef}
+            side={THREE.FrontSide}
             speed={distortSpeed}     
             distort={distortFactor}  
             radius={1}
@@ -217,9 +220,10 @@ export const Bubble = ({
           <meshPhysicalMaterial
             color="#ffffff"        
             transmission={0.99}    // Max przezroczystości
+            side={THREE.FrontSide}
             opacity={1}
             transparent={true}
-            roughness={0.0}        // Idealnie gładkie
+            roughness={0.8}        // Idealnie gładkie
             metalness={0.0}
             ior={1.1}              // Bańka mydlana
             thickness={0.1}        
@@ -235,6 +239,7 @@ export const Bubble = ({
           // @ts-ignore
           <velvetGrainMaterial 
             ref={materialRef}
+            side={THREE.FrontSide}
             uColorBase={new THREE.Color(palette.base)}
             uColorMid={new THREE.Color(palette.mid)}
             uColorRim={new THREE.Color(palette.rim)}

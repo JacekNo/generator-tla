@@ -4,17 +4,15 @@ import { Environment } from '@react-three/drei';
 import { EffectComposer, DepthOfField, Vignette, Noise } from '@react-three/postprocessing';
 import { useMemo, forwardRef, useImperativeHandle, useState, useRef } from 'react';
 import * as THREE from 'three';
-import { PALETTES } from '../config/tokens'; // Potrzebne do tła
+import { PALETTES } from '../config/tokens';
 import type { PaletteKey } from '../config/tokens';
 import { Bubble } from './Bubble';
 import { Background } from './Background';
-// IMPORTUJEMY NOWY SILNIK:
 import { generateLayout } from '../logic/LayoutEngine';
-import type { CompositionType } from '../logic/LayoutEngine'; // <-- Słowo 'type' jest kluczowe
+import type { CompositionType } from '../logic/LayoutEngine';
 
 export type BackgroundStyle = 'CLEAN' | 'MISTY';
 export type BubbleStyle = 'MATTE' | 'VIVID' | 'CLAY';
-// Eksportujemy typ dalej dla App.tsx
 export type { CompositionType }; 
 
 interface SceneProps {
@@ -33,10 +31,7 @@ const CameraRig = ({ composition }: { composition: CompositionType }) => {
     let targetPos = new THREE.Vector3(0, 0, 10);
 
     if (composition === 'STUDIO_SCENOGRAPHY') {
-      // NOWY TRYB: Patrzymy prosto na pas horyzontalny
-      // Y = -0.4 (środek pasa)
       target = new THREE.Vector3(0, -0.4, 0);
-      // Kamera lekko oddalona, nisko, prawie ortograficzna perspektywa
       targetPos.set(0, 0.5, 16); 
     } 
     else if (composition === 'STUDIO') {
@@ -95,15 +90,39 @@ export const Scene = forwardRef<any, SceneProps>(({
   const isClay = bubbleStyle === 'CLAY';
   const isStudio = composition === 'STUDIO';
 
-  // --- TERAZ TUTAJ JEST CZYSTO ---
-  // Cała brudna matematyka dzieje się w LayoutEngine.ts
+  // Generowanie układu
   const bubbles = useMemo(() => {
     return generateLayout(count, composition || 'CHAOS', mode || 'MIX');
-  }, [mode, count, composition, seed]); // Przeliczamy tylko gdy zmienią się parametry
+  }, [mode, count, composition, seed]);
 
-  const bgColors = useMemo(() => {
+  // --- LOGIKA KOLORÓW TŁA ---
+  const bgGradientColors = useMemo(() => {
     const theme = PALETTES[mode] || PALETTES['MIX'];
-    return { top: theme[0].rim, bottom: theme[0].base };
+    
+    // Pobieramy kolory z tematu (Base=Ciemny, Rim=Jasny)
+    const brandColorLight = theme[0].rim; 
+    const brandColorDark = theme[0].base;
+
+    if (mode === 'MIX') {
+      // DLA MIX: 4 Różne kolory w narożnikach
+      // [TopLeft, TopRight, BottomLeft, BottomRight]
+      return [
+        '#FF545E', // TM (Czerwony jasny)
+        '#40B6FF', // LO (Niebieski jasny)
+        '#DD48B1', // LP (Różowy jasny)
+        '#1E53E5'  // ED (Granatowy)
+      ];
+    } else {
+      // DLA POJEDYNCZYCH MAREK: Gradient Pionowy
+      // TopLeft == TopRight (Góra)
+      // BottomLeft == BottomRight (Dół)
+      return [
+        brandColorLight, // TL
+        brandColorLight, // TR
+        brandColorDark,  // BL
+        brandColorDark   // BR
+      ];
+    }
   }, [mode]);
 
   return (
@@ -115,9 +134,12 @@ export const Scene = forwardRef<any, SceneProps>(({
     >
       <CameraRig composition={composition} />
 
+      {/* Tło wyświetlamy tylko w trybie MISTY */}
       {bgStyle === 'MISTY' ? (
-        <Background colorTop={bgColors.top} colorBottom={bgColors.bottom} />
+        // Przekazujemy tablicę 4 kolorów
+        <Background colors={bgGradientColors} />
       ) : (
+        // W trybie CLEAN jednolite jasne tło
         <color attach="background" args={['#f2f4f6']} />
       )}
 
